@@ -23,6 +23,16 @@ extern void refresh_cart_list(void);
 extern lv_obj_t *scr2;
 extern lv_obj_t *scr3;
 
+// 辅助函数：将浮点数格式化为字符串（避免使用%.2f）
+static void format_float(char *buf, size_t buf_size, float value)
+{
+    int int_part = (int)value;
+    int frac_part = (int)((value - int_part) * 100 + 0.5f);
+    if (frac_part < 0) frac_part = -frac_part;
+    if (frac_part >= 100) frac_part = 0;
+    snprintf(buf, buf_size, "%d.%02d", int_part, frac_part);
+}
+
 static const char * kb_map_int[] = {
     "1","2","3","\n",
     "4","5","6","\n",
@@ -87,7 +97,12 @@ static void sanitize_input(char *buf)
            if(is_decimal[current_index])
         {
             float v = atof(new_buf);
-            sprintf(new_buf, "%.2f", v);
+            // 使用整数格式化代替浮点数格式化
+            int v_int = (int)v;
+            int v_frac = (int)((v - v_int) * 100 + 0.5f);
+            if (v_frac < 0) v_frac = -v_frac;
+            if (v_frac >= 100) v_frac = 0;
+            sprintf(new_buf, "%d.%02d", v_int, v_frac);
         }
     }
 
@@ -111,7 +126,12 @@ void update_total_sum(void)
         sum += val;
     }
     char buf[32];
-    sprintf(buf, "SUM: %.2f", sum);
+    // 使用整数格式化代替浮点数格式化
+    int sum_int = (int)sum;
+    int sum_frac = (int)((sum - sum_int) * 100 + 0.5f);
+    if (sum_frac < 0) sum_frac = -sum_frac;
+    if (sum_frac >= 100) sum_frac = 0;
+    sprintf(buf, "SUM: %d.%02d", sum_int, sum_frac);
     lv_label_set_text(total_sum_label, buf);
 }
 
@@ -287,20 +307,26 @@ void kb_event_cb(lv_event_t * e)
         cart_qty[current_index] = qty;
 
         char b1[32], b2[64];
-        snprintf(b1, sizeof(b1), "Qty: %.2f", qty);
-        lv_label_set_text(qty_label[current_index], b1);
+        format_float(b1, sizeof(b1), qty);
+        // 添加"Qty: "前缀
+        char b1_full[64];
+        snprintf(b1_full, sizeof(b1_full), "Qty: %s", b1);
+        lv_label_set_text(qty_label[current_index], b1_full);
 
+        char total_str[32];
+        format_float(total_str, sizeof(total_str), total);
+        
         if(current_index == 0)
         {
-            snprintf(b2, sizeof(b2), "Total: %.2f (10%% OFF)", total);
+            snprintf(b2, sizeof(b2), "Total: %s (10%% OFF)", total_str);
         }
         else if(current_index == 3 && raw_total >= 20.0f)
         {
-            snprintf(b2, sizeof(b2), "Total: %.2f (-5)", total);
+            snprintf(b2, sizeof(b2), "Total: %s (-5)", total_str);
         }
         else
         {
-            snprintf(b2, sizeof(b2), "Total: %.2f", total);
+            snprintf(b2, sizeof(b2), "Total: %s", total_str);
         }
 
         lv_label_set_text(total_label[current_index], b2);
