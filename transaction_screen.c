@@ -19,11 +19,14 @@ typedef struct {
     ItemDetail items[MAX_ITEMS_PER_RECORD];  // 商品明细数组
     int item_count;                           // 商品数量
     float total;                              // 总价
+    char time_str[32];                        // 交易时间
 } Record;
 
 static Record record_list[MAX_RECORDS];
 static int record_count = 0;
 static lv_obj_t *record_container = NULL;
+static lv_obj_t *stats_label = NULL;  // 统计信息标签
+static float total_sales = 0.0f;  // 总销售额统计
 
 extern float cart_qty[5];
 extern void update_total_sum(void);
@@ -31,9 +34,26 @@ extern lv_obj_t *scr1;
 
 static const float prices[5] = {3, 7, 6, 5, 4};
 
+// 更新顶部统计信息
+static void update_stats_label(void)
+{
+    if (stats_label == NULL) return;
+    
+    char stats_buf[64];
+    int sales_int = (int)total_sales;
+    int sales_frac = (int)((total_sales - sales_int) * 100 + 0.5f);
+    if (sales_frac < 0) sales_frac = -sales_frac;
+    if (sales_frac >= 100) sales_frac = 0;
+    sprintf(stats_buf, "Sales: $%d.%02d | %d txns", sales_int, sales_frac, record_count);
+    lv_label_set_text(stats_label, stats_buf);
+}
+
 void refresh_records(void)
 {
     if (!record_container) return;
+
+    // 更新统计信息
+    update_stats_label();
 
     // 清空容器
     lv_obj_clean(record_container);
@@ -52,16 +72,16 @@ void refresh_records(void)
 
     int y_offset = 10;  // 从顶部开始
     
-    // 定义颜色数组，循环使用
+    // 定义颜色数组，循环使用（去掉蓝色，使用与冷色调背景有区别的颜色）
     lv_color_t colors[] = {
-        lv_palette_main(LV_PALETTE_BLUE),
-        lv_palette_main(LV_PALETTE_GREEN),
-        lv_palette_main(LV_PALETTE_ORANGE),
-        lv_palette_main(LV_PALETTE_RED),
-        lv_palette_main(LV_PALETTE_PURPLE),
-        lv_palette_main(LV_PALETTE_CYAN),
-        lv_palette_main(LV_PALETTE_PINK),
-        lv_palette_main(LV_PALETTE_INDIGO)
+        lv_palette_main(LV_PALETTE_GREEN),      // 绿色
+        lv_palette_main(LV_PALETTE_ORANGE),     // 橙色
+        lv_palette_main(LV_PALETTE_RED),        // 红色
+        lv_palette_main(LV_PALETTE_PURPLE),     // 紫色
+        lv_palette_main(LV_PALETTE_PINK),       // 粉色
+        lv_palette_main(LV_PALETTE_INDIGO),     // 靛蓝
+        lv_palette_main(LV_PALETTE_BROWN),      // 棕色
+        lv_palette_main(LV_PALETTE_TEAL)        // 青色
     };
     int color_count = sizeof(colors) / sizeof(colors[0]);
 
@@ -85,8 +105,8 @@ void refresh_records(void)
         int card_y_offset = 0;  // 卡片内部的垂直偏移
         
         // 显示记录序号标签
-        char count_buf[32];
-        sprintf(count_buf, "Record %d:", i + 1);
+        char count_buf[64];
+        sprintf(count_buf, "%s (Record %d):", record_list[i].time_str, i + 1);
         lv_obj_t *lbl_count = lv_label_create(card);
         lv_label_set_text(lbl_count, count_buf);
         lv_obj_align(lbl_count, LV_ALIGN_TOP_LEFT, 8, card_y_offset);
@@ -148,7 +168,10 @@ void refresh_records(void)
         lv_label_set_text(lbl_total, total_buf);
         lv_obj_align(lbl_total, LV_ALIGN_BOTTOM_MID, 0, -8);
         
-        y_offset += 120;  // 每个card间隔120像素（根据内容动态调整）
+        // 动态计算卡片高度并更新y_offset
+        // 卡片高度 = card_y_offset（内容总高度）+ 上下内边距(12*2) + 底部间距
+        int card_height = card_y_offset + 24 + 30;  // 24是上下内边距，30是底部额外空间
+        y_offset += card_height + 10;  // 每条记录间隔10像素
     }
 }
 
@@ -167,6 +190,11 @@ void create_new_record(void)
 
     // 清空新记录位置
     memset(&record_list[0], 0, sizeof(Record));
+
+    // 获取当前交易时间（简化版，使用递增计数器模拟）
+    static int transaction_counter = 0;
+    transaction_counter++;
+    sprintf(record_list[0].time_str, "Transaction #%d", transaction_counter);
 
     for (int i = 0; i < 5; i++) {
         if (cart_qty[i] <= 0.001f) continue;
@@ -211,6 +239,7 @@ void create_new_record(void)
     record_list[0].total = total_all;
 
     record_count++;
+    total_sales += total_all;  // 累加销售额
 
     memset(cart_qty, 0, sizeof(cart_qty));
     update_total_sum();
@@ -243,31 +272,90 @@ static void switch_btn_event_cb(lv_event_t *e)
 void create_scr3_records(void)
 {
     scr3 = lv_obj_create(NULL);
+    // 设置暖色调背景（浅粉橙色）
+    lv_obj_set_style_bg_color(scr3, lv_color_hex(0xFFE4E1), 0);
+    lv_obj_set_style_bg_opa(scr3, LV_OPA_COVER, 0);
 
+    // 创建顶部标题标签方框 - 使用契合暖色调的橙红色
+    lv_obj_t *title_box = lv_obj_create(scr3);
+    lv_obj_set_size(title_box, 220, 40);  // 适中的大小
+    lv_obj_align(title_box, LV_ALIGN_TOP_MID, 0, 15);
+    lv_obj_set_style_bg_color(title_box, lv_color_hex(0xFF7043), 0);  // 橙红色渐变起始色
+    lv_obj_set_style_bg_grad_color(title_box, lv_color_hex(0xF4511E), 0);  // 橙红色渐变结束色
+    lv_obj_set_style_bg_grad_dir(title_box, LV_GRAD_DIR_HOR, 0);
+    lv_obj_set_style_radius(title_box, 10, 0);
+    lv_obj_set_style_border_width(title_box, 0, 0);
+    lv_obj_set_style_shadow_width(title_box, 6, 0);
+    lv_obj_set_style_shadow_color(title_box, lv_color_hex(0x000000), 0);
+    lv_obj_set_style_shadow_opa(title_box, LV_OPA_30, 0);
+    lv_obj_set_style_shadow_ofs_y(title_box, 2, 0);
+    // 禁用标题方框的滚动
+    lv_obj_set_scroll_dir(title_box, LV_DIR_NONE);
+    lv_obj_clear_flag(title_box, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t *title = lv_label_create(title_box);
+    lv_label_set_text(title, "Transaction Records");
+    lv_obj_set_style_text_color(title, lv_color_hex(0xFFFFFF), 0);  // 白色字体
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_14, 0);
+    lv_obj_set_scroll_dir(title, LV_DIR_NONE);
+    lv_obj_clear_flag(title, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_center(title);
+
+    // Back按钮 - 使用契合暖色调的棕色（直接放在scr3上）
     lv_obj_t *btn_back = lv_btn_create(scr3);
-    lv_obj_set_size(btn_back, 90, 40);
-    lv_obj_align(btn_back, LV_ALIGN_TOP_LEFT, 10, 10);
+    lv_obj_set_size(btn_back, 80, 40);
+    lv_obj_align(btn_back, LV_ALIGN_TOP_LEFT, 20, 15);  // 上移到与标题同一高度
+    lv_obj_set_style_bg_color(btn_back, lv_color_hex(0x8D6E63), 0);  // 棕色渐变起始色
+    lv_obj_set_style_bg_grad_color(btn_back, lv_color_hex(0x6D4C41), 0);  // 棕色渐变结束色
+    lv_obj_set_style_bg_grad_dir(btn_back, LV_GRAD_DIR_VER, 0);
+    lv_obj_set_style_radius(btn_back, 10, 0);
+    lv_obj_set_style_shadow_width(btn_back, 5, 0);
+    lv_obj_set_style_shadow_opa(btn_back, LV_OPA_30, 0);
     lv_obj_t *lbl_back = lv_label_create(btn_back);
     lv_label_set_text(lbl_back, "Back");
     lv_obj_center(lbl_back);
     lv_obj_add_event_cb(btn_back, switch_btn_event_cb, LV_EVENT_CLICKED, NULL);
 
-    // 创建标题按钮（和Back按钮一样的效果）
-    lv_obj_t *title_btn = lv_btn_create(scr3);
-    lv_obj_set_size(title_btn, 200, 40);
-    lv_obj_align(title_btn, LV_ALIGN_TOP_MID, 0, 10);
-    lv_obj_t *title = lv_label_create(title_btn);
-    lv_label_set_text(title, "Transaction Records");
-    lv_obj_center(title);
+    // 统计信息 - 使用契合暖色调的深橙色标签方框（直接放在scr3上）
+    lv_obj_t *stats_box = lv_obj_create(scr3);
+    lv_obj_set_size(stats_box, 180, 40);  // 固定宽度，与Back按钮和标题协调
+    lv_obj_align(stats_box, LV_ALIGN_TOP_RIGHT, -20, 15);  // 上移到与标题同一高度
+    lv_obj_set_style_bg_color(stats_box, lv_color_hex(0xFF9800), 0);  // 深橙色渐变起始色
+    lv_obj_set_style_bg_grad_color(stats_box, lv_color_hex(0xF57C00), 0);  // 深橙色渐变结束色
+    lv_obj_set_style_bg_grad_dir(stats_box, LV_GRAD_DIR_HOR, 0);
+    lv_obj_set_style_radius(stats_box, 8, 0);
+    lv_obj_set_style_border_width(stats_box, 0, 0);
+    lv_obj_set_style_shadow_width(stats_box, 3, 0);
+    lv_obj_set_style_shadow_opa(stats_box, LV_OPA_30, 0);
+    // 禁用滚动
+    lv_obj_set_scroll_dir(stats_box, LV_DIR_NONE);
+    lv_obj_clear_flag(stats_box, LV_OBJ_FLAG_SCROLLABLE);
+
+    stats_label = lv_label_create(stats_box);
+    char stats_buf[64];
+    int sales_int = (int)total_sales;
+    int sales_frac = (int)((total_sales - sales_int) * 100 + 0.5f);
+    if (sales_frac < 0) sales_frac = -sales_frac;
+    if (sales_frac >= 100) sales_frac = 0;
+    sprintf(stats_buf, "Sales: $%d.%02d | %d txns", sales_int, sales_frac, record_count);
+    lv_label_set_text(stats_label, stats_buf);
+    lv_obj_set_style_text_color(stats_label, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_font(stats_label, &lv_font_montserrat_14, 0);
+    lv_obj_set_scroll_dir(stats_label, LV_DIR_NONE);
+    lv_obj_clear_flag(stats_label, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_center(stats_label);
 
     record_container = lv_obj_create(scr3);
     lv_obj_set_size(record_container,
                     lv_disp_get_hor_res(NULL) - 20,
-                    lv_disp_get_ver_res(NULL) - 70);
-    lv_obj_align(record_container, LV_ALIGN_BOTTOM_MID, 0, -5);
+                    lv_disp_get_ver_res(NULL) - 90);
+    lv_obj_align(record_container, LV_ALIGN_BOTTOM_MID, 0, -10);
     // 启用垂直滚动功能
     lv_obj_set_scroll_dir(record_container, LV_DIR_VER);
     lv_obj_set_style_pad_all(record_container, 10, 0);
+    // 设置冷色调背景（更冷的浅青色），与暖色调页面形成鲜明对比
+    lv_obj_set_style_bg_color(record_container, lv_color_hex(0xB2EBF2), 0);  // 更冷的浅青色
+    lv_obj_set_style_bg_opa(record_container, LV_OPA_COVER, 0);
 
     // 确保每次都刷新显示
     refresh_records();
